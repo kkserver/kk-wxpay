@@ -77,16 +77,16 @@ func NewNonceStr() string {
 	return hex.EncodeToString(m.Sum(nil))
 }
 
-type Result struct {
-	ReturnCode string `xml:"return_code"`
-	ReturnMsg  string `xml:"return_msg"`
-	AppId      string `xml:"appid"`
-	MchId      string `xml:"mch_id"`
-	NonceStr   string `xml:"nonce_str"`
-	Openid     string `xml:"openid"`
-	Sign       string `xml:"sign"`
-	PrepayId   string `xml:"prepay_id"`
-	TradeType  string `xml:"trade_type"`
+type WXPayCreateResultData struct {
+	ReturnCode string `xml:"return_code",json:"return_code"`
+	ReturnMsg  string `xml:"return_msg",json:"return_msg"`
+	AppId      string `xml:"appid",json:"appid"`
+	MchId      string `xml:"mch_id",json:"mch_id"`
+	NonceStr   string `xml:"nonce_str",json:"nonce_str"`
+	Openid     string `xml:"openid",json:"openid"`
+	Sign       string `xml:"sign",json:"sign"`
+	PrepayId   string `xml:"prepay_id",json:"prepay_id"`
+	TradeType  string `xml:"trade_type",json:"trade_type"`
 }
 
 func (S *WXPayService) HandleWXPayCreateTask(a IWXPayApp, task *WXPayCreateTask) error {
@@ -150,7 +150,7 @@ func (S *WXPayService) HandleWXPayCreateTask(a IWXPayApp, task *WXPayCreateTask)
 
 		log.Println(string(body))
 
-		data := Result{}
+		data := WXPayCreateResultData{}
 
 		err = xml.Unmarshal(body, &data)
 
@@ -160,7 +160,33 @@ func (S *WXPayService) HandleWXPayCreateTask(a IWXPayApp, task *WXPayCreateTask)
 			return nil
 		}
 
-		log.Println(data)
+		if data.ReturnCode == "SUCCESS" {
+
+			if task.TradeType == WXPayTradeTypeJSAPI {
+
+				pay := map[string]interface{}{}
+
+				pay["appId"] = a.GetAppId()
+				pay["timeStamp"] = time.Now().Unix()
+				pay["nonceStr"] = task.NonceStr
+				pay["package"] = "prepay_id=" + data.PrepayId
+				pay["signType"] = "MD5"
+				pay["paySign"] = Sign(pay, a.GetKey())
+				pay["timestamp"] = pay["timeStamp"]
+
+				delete(pay, "timeStamp")
+
+				task.Result.Data = &pay
+
+			} else {
+				task.Result.Data = &data
+			}
+
+		} else {
+			task.Result.Errno = ERROR_WXPAY
+			task.Result.Errmsg = data.ReturnMsg
+			return nil
+		}
 
 	} else {
 		var body = make([]byte, resp.ContentLength)

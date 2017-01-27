@@ -4,9 +4,18 @@ import (
 	"github.com/kkserver/kk-lib/kk/app"
 )
 
+type WXPayJSAPIData struct {
+	AppId     string `json:"appId"`
+	TimeStamp int64  `json:"timeStamp"`
+	NonceStr  string `json:"nonceStr"`
+	Package   string `json:"package"`
+	SignType  string `json:"signType"`
+	PaySign   string `json:"paySign"`
+}
+
 type WXPayCreateTaskResult struct {
 	app.Result
-	Data map[string]interface{} `json:"data,omitempty"`
+	Data interface{} `json:"data,omitempty"`
 }
 
 const WXPayTradeTypeJSAPI = "JSAPI"
