@@ -225,10 +225,10 @@ func (S *WXPayService) HandleWXPayConfirmTask(a IWXPayApp, task *WXPayConfirmTas
 		}
 
 		switch token.(type) {
-		case *xml.StartElement:
-			names = append(names, token.(*xml.StartElement).Name.Local)
+		case xml.StartElement:
+			names = append(names, token.(xml.StartElement).Name.Local)
 			value = ""
-		case *xml.EndElement:
+		case xml.EndElement:
 			if len(names) > 1 {
 				data[names[1]] = value
 			}
