@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"github.com/kkserver/kk-lib/kk/app"
 	"github.com/kkserver/kk-lib/kk/dynamic"
+	"io"
 	"log"
 	"net/http"
 	"sort"
@@ -195,6 +196,81 @@ func (S *WXPayService) HandleWXPayCreateTask(a IWXPayApp, task *WXPayCreateTask)
 		log.Println(string(body))
 		task.Result.Errno = ERROR_WXPAY
 		task.Result.Errmsg = fmt.Sprintf("[%d] %s", resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
+func (S *WXPayService) HandleWXPayConfirmTask(a IWXPayApp, task *WXPayConfirmTask) error {
+
+	dec := xml.NewDecoder(bytes.NewBufferString(task.Body))
+
+	data := map[string]interface{}{}
+
+	var names = []string{}
+	var value = ""
+
+	for {
+
+		token, err := dec.Token()
+
+		if err != nil {
+			if err == io.EOF {
+				break
+			} else {
+				task.Result.Errno = ERROR_WXPAY
+				task.Result.Errmsg = err.Error()
+				return nil
+			}
+		}
+
+		switch token.(type) {
+		case *xml.StartElement:
+			names = append(names, token.(*xml.StartElement).Name.Local)
+			value = ""
+		case *xml.EndElement:
+			if len(names) > 1 {
+				data[names[1]] = value
+			}
+			names = names[0 : len(names)-1]
+		case xml.CharData:
+			value = string(token.(xml.CharData))
+		}
+
+	}
+
+	log.Println(data)
+
+	var sign = dynamic.StringValue(dynamic.Get(data, "sign"), "")
+
+	delete(data, "sign")
+
+	var v = Sign(data, a.GetKey())
+
+	if sign == v {
+
+		out_trade_no := dynamic.StringValue(dynamic.Get(data, "out_trade_no"), "")
+
+		if strings.HasPrefix(out_trade_no, a.GetPrefix()) {
+
+			pay := WXPayConfirmData{}
+
+			pay.TradeId = out_trade_no[len(a.GetPrefix()):]
+			pay.TransactionId = dynamic.StringValue(dynamic.Get(data, "transaction_id"), "")
+			pay.Openid = dynamic.StringValue(dynamic.Get(data, "openid"), "")
+
+			task.Result.Data = &pay
+
+		} else {
+			task.Result.Errno = ERROR_WXPAY
+			task.Result.Errmsg = "out_trade_no fail"
+			return nil
+		}
+
+	} else {
+		task.Result.Errno = ERROR_WXPAY
+		task.Result.Errmsg = "sign fail"
+		return nil
 	}
 
 	return nil

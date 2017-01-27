@@ -5,8 +5,9 @@ import (
 )
 
 type WXPayConfirmData struct {
-	TradeId string `json:"tradeId"`
-	TradeNo string `json:"tradeNo"`
+	Openid        string `json:"openid"`
+	TradeId       string `json:"tradeId"`
+	TransactionId string `json:"transactionId"`
 }
 
 type WXPayConfirmTaskResult struct {
