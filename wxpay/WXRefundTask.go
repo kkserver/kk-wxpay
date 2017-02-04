@@ -6,7 +6,7 @@ import (
 
 type WXRefundTaskResult struct {
 	app.Result
-	RefundNo string `json:"refundId,omitempty"`
+	RefundNo string `json:"refundNo,omitempty"`
 }
 
 type WXRefundTask struct {
