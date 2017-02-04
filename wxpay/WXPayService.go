@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/md5"
 	"crypto/tls"
-	"crypto/x509"
 	"encoding/hex"
 	"encoding/xml"
 	"fmt"
@@ -23,8 +22,7 @@ type WXPayService struct {
 
 	Create  *WXPayCreateTask
 	Confirm *WXPayConfirmTask
-
-	ca *x509.CertPool
+	Refund  *WXRefundTask
 }
 
 func (S *WXPayService) Handle(a app.IApp, task app.ITask) error {
@@ -32,9 +30,6 @@ func (S *WXPayService) Handle(a app.IApp, task app.ITask) error {
 }
 
 func (S *WXPayService) HandleInitTask(a app.IApp, task *app.InitTask) error {
-
-	S.ca = x509.NewCertPool()
-	S.ca.AppendCertsFromPEM(pemCerts)
 
 	return nil
 }
@@ -135,7 +130,7 @@ func (S *WXPayService) HandleWXPayCreateTask(a IWXPayApp, task *WXPayCreateTask)
 
 	client := &http.Client{
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{RootCAs: S.ca},
+			TLSClientConfig: &tls.Config{RootCAs: a.GetCA()},
 		},
 	}
 
@@ -271,6 +266,120 @@ func (S *WXPayService) HandleWXPayConfirmTask(a IWXPayApp, task *WXPayConfirmTas
 		task.Result.Errno = ERROR_WXPAY
 		task.Result.Errmsg = "sign fail"
 		return nil
+	}
+
+	return nil
+}
+
+type WXRefundResultData struct {
+	ReturnCode    string `xml:"return_code"`
+	ReturnMsg     string `xml:"return_msg"`
+	ResultCode    string `xml:"result_code"`
+	ErrCode       string `xml:"err_code"`
+	ErrCodeDes    string `xml:"err_code_des"`
+	AppId         string `xml:"appid"`
+	MchId         string `xml:"mch_id"`
+	NonceStr      string `xml:"nonce_str"`
+	Sign          string `xml:"sign"`
+	TransactionId string `xml:"transaction_id"`
+	OutTradeNo    string `xml:"out_trade_no"`
+	OutRefundNo   string `xml:"out_refund_no"`
+	RefundId      string `xml:"refund_id"`
+	RefundFee     int64  `xml:"refund_fee"`
+	TotalFee      int64  `xml:"total_fee"`
+}
+
+func (S *WXPayService) HandleWXRefundTask(a IWXPayApp, task *WXRefundTask) error {
+
+	data := map[string]interface{}{}
+
+	data["appid"] = a.GetAppId()
+	data["mch_id"] = a.GetMchId()
+	data["nonce_str"] = NewNonceStr()
+	data["transaction_id"] = task.TransactionId
+	data["out_trade_no"] = a.GetPrefix() + task.TradeId
+	data["out_refund_no"] = a.GetPrefix() + task.RefundId
+	data["total_fee"] = task.Value
+	data["refund_fee"] = task.RefundValue
+	data["op_user_id"] = a.GetMchId()
+	data["sign_type"] = "MD5"
+	data["sign"] = Sign(data, a.GetKey())
+
+	b := bytes.NewBuffer(nil)
+
+	b.WriteString("<xml>")
+
+	for key, value := range data {
+		b.WriteString("<")
+		b.WriteString(key)
+		b.WriteString("><![CDATA[")
+		b.WriteString(dynamic.StringValue(value, ""))
+		b.WriteString("]]></")
+		b.WriteString(key)
+		b.WriteString(">")
+	}
+
+	b.WriteString("</xml>")
+
+	log.Println(b.String())
+
+	certs, err := a.GetCerts()
+
+	if err != nil {
+		task.Result.Errno = ERROR_WXPAY
+		task.Result.Errmsg = err.Error()
+		return nil
+	}
+
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{RootCAs: a.GetCA(), Certificates: certs},
+		},
+	}
+
+	resp, err := client.Post("https://api.mch.weixin.qq.com/secapi/pay/refund", "text/xml; charset=utf-8", b)
+
+	if err != nil {
+		task.Result.Errno = ERROR_WXPAY
+		task.Result.Errmsg = err.Error()
+	} else if resp.StatusCode == 200 {
+		var body = make([]byte, resp.ContentLength)
+		_, _ = resp.Body.Read(body)
+		defer resp.Body.Close()
+
+		log.Println(string(body))
+
+		data := WXRefundResultData{}
+
+		err = xml.Unmarshal(body, &data)
+
+		if err != nil {
+			task.Result.Errno = ERROR_WXPAY
+			task.Result.Errmsg = err.Error()
+			return nil
+		}
+
+		if data.ReturnCode == "SUCCESS" {
+			if data.ResultCode == "SUCCESS" {
+				task.Result.RefundNo = data.RefundId
+			} else {
+				task.Result.Errno = ERROR_WXPAY
+				task.Result.Errmsg = data.ErrCodeDes
+				return nil
+			}
+		} else {
+			task.Result.Errno = ERROR_WXPAY
+			task.Result.Errmsg = data.ReturnMsg
+			return nil
+		}
+
+	} else {
+		var body = make([]byte, resp.ContentLength)
+		_, _ = resp.Body.Read(body)
+		defer resp.Body.Close()
+		log.Println(string(body))
+		task.Result.Errno = ERROR_WXPAY
+		task.Result.Errmsg = fmt.Sprintf("[%d] %s", resp.StatusCode, string(body))
 	}
 
 	return nil
