@@ -22,6 +22,7 @@ type WXPayCreateTask struct {
 	Value     int64  `json:"value"`
 	Body      string `json:"body"`
 	ClientIp  string `json:"clientIp"`
+	NotifyUrl string `json:"notifyUrl"`
 	Result    WXPayCreateTaskResult
 }
 

@@ -104,7 +104,11 @@ func (S *WXPayService) HandleWXPayCreateTask(a IWXPayApp, task *WXPayCreateTask)
 	data["out_trade_no"] = a.GetPrefix() + task.TradeId
 	data["total_fee"] = task.Value
 	data["spbill_create_ip"] = task.ClientIp
-	data["notify_url"] = a.GetNotifyUrl()
+	if task.NotifyUrl != "" {
+		data["notify_url"] = task.NotifyUrl
+	} else {
+		data["notify_url"] = a.GetNotifyUrl()
+	}
 	data["trade_type"] = task.TradeType
 	data["openid"] = task.Openid
 	data["sign_type"] = "MD5"
