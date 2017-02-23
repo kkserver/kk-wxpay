@@ -300,8 +300,13 @@ func (S *WXPayService) HandleWXRefundTask(a IWXPayApp, task *WXRefundTask) error
 	data["appid"] = a.GetAppId()
 	data["mch_id"] = a.GetMchId()
 	data["nonce_str"] = NewNonceStr()
-	data["transaction_id"] = task.TransactionId
-	data["out_trade_no"] = a.GetPrefix() + task.TradeId
+
+	if task.TransactionId != "" {
+		data["transaction_id"] = task.TransactionId
+	} else {
+		data["out_trade_no"] = a.GetPrefix() + task.TradeId
+	}
+
 	data["out_refund_no"] = a.GetPrefix() + task.RefundId
 	data["total_fee"] = task.Value
 	data["refund_fee"] = task.RefundValue
